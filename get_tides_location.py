@@ -4,10 +4,6 @@
 # # Tide scraper 
 
 # ## Import modules
-
-# In[39]:
-
-
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 

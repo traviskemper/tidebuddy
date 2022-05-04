@@ -12,7 +12,7 @@ v0.0.1
 Install
 =========
 
-Assuming pip and python are installed:
+Assuming pip and python3 are installed:
     
      pip install -r requirements.txt
      
