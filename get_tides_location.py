@@ -12,14 +12,6 @@ from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 
 from datetime import datetime
-import wget
-
-import zipfile
-
-import platform
-
-import os.path
-
 import json
 
 import pandas as pd
@@ -38,6 +30,27 @@ location_l = [
 ]
 home_url = "https://www.tide-forecast.com/"
 web_driver_path = './chromedriver.exe'
+
+logger_level = logging.INFO
+# Setup logging 
+logger.setLevel(logger_level)
+# create formatter and add it to the handlers
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+#create console handler and set level to debug
+ch = logging.StreamHandler()
+ch.setLevel(logger_level)
+
+# add formatter to ch
+ch.setFormatter(formatter)
+# add ch to logger
+logger.addHandler(ch)
+
+fhandler = logging.FileHandler(filename='get_tides_location.log', mode='a')
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+fhandler.setFormatter(formatter)
+logger.addHandler(fhandler)
+
 # Create Functions
 def tide_check(day, day_data):
     '''Process day data and find low tide during day light hours
@@ -64,7 +77,7 @@ def tide_check(day, day_data):
    # Find sunrise and sunset 
     sunrise = df_sr.loc[ df_sr['Event']== 'Sunrise', 'Datetime_obj' ].iloc[0]
     sunset = df_sr.loc[ df_sr['Event']== 'Sunset', 'Datetime_obj' ].iloc[0]
-    logger.info("{} Sunrise:{} and Sunset:{}".format(day, sunrise,sunset))
+    logger.debug("{} Sunrise:{} and Sunset:{}".format(day, sunrise,sunset))
     # Filter low tide during the day light hours 
     df_tides['daylight_lowtide'] = (df_tides['Tide'] == 'Low Tide') & (df_tides['Datetime_obj'] >= sunrise ) & (df_tides['Datetime_obj'] <= sunset )
     df_sr['daylight_lowtide'] = False
@@ -80,34 +93,8 @@ def tide_check(day, day_data):
     return df_tides.append( df_sr )
 
 
-if( 'debuglog' in args ):
-    logger_level = logging.DEBUG
-else:
-    logger_level = logging.INFO
-
-logger.setLevel(logger_level)
-# create formatter and add it to the handlers
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-#create console handler and set level to debug
-ch = logging.StreamHandler()
-ch.setLevel(logger_level)
-
-# add formatter to ch
-ch.setFormatter(formatter)
-# add ch to logger
-logger.addHandler(ch)
-
-fhandler = logging.FileHandler(filename='get_tides_location.log', mode='a')
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-fhandler.setFormatter(formatter)
-logger.addHandler(fhandler)
-    
     
 # ### Initialize driver
-
-# In[7]:
-
 
 options = webdriver.ChromeOptions()
 options.add_argument('--ignore-ssl-errors=yes')
@@ -115,11 +102,8 @@ options.add_argument('--ignore-certificate-errors')
 
 driver = webdriver.Chrome(web_driver_path, options=options)
 
-
 # ### Initialize json to capture data
-
 # ## Run webscraper to get data
-
 
 # Initialize data object to collect data from webpage
 j = {}
@@ -156,13 +140,13 @@ for location_i in location_l:
         logger.info("{} page found".format(location_i) )
         # Loop over days on the page
         for tideday in driver.find_elements_by_class_name('tide-day'):
-            # logger.info(tideday)          
+            logger.debug(tideday)          
             # Get date for day 
             for tideday__date in tideday.find_elements_by_class_name('tide-day__date'):
                 # Parse date from string 
                 day_title = tideday__date.text
                 day_date = day_title.split(':')[1].strip()
-                # logger.info(day_date)
+                logger.debug("{}".format(day_date))
                 # Initialize lists for tide information 
                 day ={}
                 tide_l = []
@@ -179,7 +163,7 @@ for location_i in location_l:
                         #   to split table reads 
                         # Check if it is a tide table
                         if( ('Tide' in row.text) & (len(cell_l) == 3 ) ):
-                            # logger.info(row.text)
+                            logger.debug(row.text)
                             tide_l.append(cell_l[0].text)
                             tide_dt_l.append(cell_l[1].text)
                             tide_h_l.append(cell_l[2].text)
@@ -205,47 +189,22 @@ for location_i in location_l:
     else:
         logger.info("Error {} not found".format(loc_city) )
 
-
-# In[12]:
-
-
 driver.close()
 
+# ## Export data
+
+now_str = datetime.now().strftime("%F_%R").replace(":","_")
+
+with open('{}_web_data.json'.format(now_str), 'w') as outfile:
+    json.dump(j, outfile)
 
 # ## Process data scrapped from website
-
-# In[113]:
-
-
-# In[ ]:
-
-
-
-
-
-# In[114]:
-
-
-with open('data.json') as json_file:
-    j = json.load(json_file)
-
-
-# In[115]:
-
-
-# Loop over extracted location data 
-for location_i, location_data in j.items():
-    logger.info(location_i,location_data['city'],location_data['state'])
-
-
-# In[126]:
-
 
 # Initialize dataframe object 
 df = pd.DataFrame()
 # Loop over extracted location data 
 for location_i, location_data in j.items():
-    logger.info(location_i,location_data['city'],location_data['state'])
+    logger.info("Processing {} {} {}".format(location_i,location_data['city'],location_data['state']))
     # Loop over days in and create time series for  sunrise, sunset and tide events 
     for day, day_data in location_data['days'].items():
         df_day = tide_check(day, day_data)
@@ -253,30 +212,9 @@ for location_i, location_data in j.items():
         df_day['State'] = location_data['state']
         df = df.append(df_day)
 
-
-# In[129]:
-
-
 df = df.reset_index()
 
-
 # ## Export data
-
-# In[148]:
-
-
-now_str = datetime.now().strftime("%F_%R").replace(":","_")
-
-
-# In[149]:
-
-
-with open('{}_web_data.json'.format(now_str), 'w') as outfile:
-    json.dump(j, outfile)
-
-
-# In[151]:
-
 
 df.to_csv('{}_proc_data.csv'.format(now_str))
 
